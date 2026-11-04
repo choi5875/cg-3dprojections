@@ -104,15 +104,84 @@ class Renderer {
     // line:         object {pt0: Vector4, pt1: Vector4}
     // z_min:        float (near clipping plane in canonical view volume)
     clipLinePerspective(line, z_min) {
-        let result = null;
-        let p0 = Vector3(line.pt0.x, line.pt0.y, line.pt0.z); 
-        let p1 = Vector3(line.pt1.x, line.pt1.y, line.pt1.z);
+        let p0 = CG.Vector3(line.pt0.x, line.pt0.y, line.pt0.z); 
+        let p1 = CG.Vector3(line.pt1.x, line.pt1.y, line.pt1.z);
         let out0 = this.outcodePerspective(p0, z_min);
         let out1 = this.outcodePerspective(p1, z_min);
         
         // TODO: implement clipping here!
-        
-        return result;
+
+        while (true) {
+            if(out0 === 0 && out1 === 0) {
+                return {pt0: p0, pt1: p1};
+            }
+            if ((out0 & out1) !== 0) {
+                return null;
+            }
+
+            let outsidePoint;
+            let insidePoint;
+            let isPt0;
+            let outsideCode;
+            if (out0 !== 0) {
+                outsideCode = out0;
+            } else {
+                outsideCode = out1;
+            }
+            if (out0 !== 0) {
+                isPt0 = true;
+                outsidePoint = p0;
+                insidePoint = p1;
+            } else {
+                isPt0 = false;
+                outsidePoint = p1;
+                insidePoint = p0;
+            }
+
+            let t;
+            
+            if ((outsideCode & LEFT) !== 0) {
+                t = (outsidePoint.z - outsidePoint.x) / 
+                ((outsidePoint.z - outsidePoint.x) - 
+                (insidePoint.z - insidePoint.x));
+            }
+            else if ((outsideCode & RIGHT) !== 0) {
+                t = (-outsidePoint.z - outsidePoint.x) / 
+                ((-outsidePoint.z - outsidePoint.x) - 
+                (-insidePoint.z - insidePoint.x));
+            }
+            else if ((outsideCode & BOTTOM) !== 0) {
+                t = (outsidePoint.z - outsidePoint.y) /
+                ((outsidePoint.z - outsidePoint.y) - 
+                (insidePoint.z - insidePoint.y));
+            }
+            else if ((outsideCode & TOP) !== 0) {
+                t = (-outsidePoint.z - outsidePoint.y) /
+                ((-outsidePoint.z - outsidePoint.y) - 
+                (-insidePoint.z - insidePoint.y));
+            }
+            else if ((outsideCode & FAR) !== 0) {
+                t = (-1 - outsidePoint.z) / 
+                (insidePoint.z - outsidePoint.z);
+            }
+            else if ((outsideCode & NEAR) !== 0) {
+                t = (z_min - outsidePoint.z) /
+                (insidePoint.z - outsidePoint.z);
+            }
+
+            let x = outsidePoint.x + t * (insidePoint.x - outsidePoint.x);
+            let y = outsidePoint.y + t * (insidePoint.y - outsidePoint.y);
+            let z = outsidePoint.z + t * (insidePoint.z - outsidePoint.z);
+            let intersection = CG.Vector3(x, y, z);
+
+            if (isPt0) {
+                p0 = intersection;
+                out0 = this.outcodePerspective(p0, z_min);
+            } else {
+                p1 = intersection;
+                out1 = this.outcodePerspective(p1, z_min);
+            }
+        }
     }
 
     //
