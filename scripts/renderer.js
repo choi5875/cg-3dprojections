@@ -30,12 +30,26 @@ class Renderer {
 
     //
     rotateLeft() {
-
+        let n = this.scene.view.srp.subtract(this.scene.view.prp);
+        let x = n.x;
+        let z = n.z;
+        let theta = -2 * Math.PI / 60;
+        n.x = x * Math.cos(theta) - z * Math.sin(theta);
+        n.z = x * Math.sin(theta) + z * Math.cos(theta);
+        this.scene.view.srp = n.add(this.scene.view.prp);
+        this.draw();
     }
     
     //
     rotateRight() {
-
+        let n = this.scene.view.srp.subtract(this.scene.view.prp);
+        let x = n.x;
+        let z = n.z;
+        let theta = 2 * Math.PI / 60;
+        n.x = x * Math.cos(theta) - z * Math.sin(theta);
+        n.z = x * Math.sin(theta) + z * Math.cos(theta);
+        this.scene.view.srp = n.add(this.scene.view.prp);
+        this.draw();
     }
     
     //
@@ -50,27 +64,67 @@ class Renderer {
     
     //
     moveBackward() {
-
+        let n = this.scene.view.prp.subtract(this.scene.view.srp);
+        n.normalize();
+        this.scene.view.prp = this.scene.view.prp.add(n);
+        this.scene.view.srp = this.scene.view.srp.add(n);
+        this.draw();
     }
     
     //
     moveForward() {
-
+        let n = this.scene.view.prp.subtract(this.scene.view.srp);
+        n.normalize();
+        this.scene.view.prp = this.scene.view.prp.subtract(n);
+        this.scene.view.srp = this.scene.view.srp.subtract(n);
+        this.draw();
     }
 
     //
     draw() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // TODO: implement drawing here!
-        // For each model
-        //   * For each vertex
-        //     * transform endpoints to canonical view volume
-        //   * For each line segment in each edge
-        //     * clip in 3D
-        //     * project to 2D
-        //     * translate/scale to viewport (i.e. window)
-        //     * draw line
+        let view = this.scene.view;
+        let n_per = CG.mat4x4Perspective(view.prp, view.srp, view.vup, view.clip);
+        let m_per = CG.mat4x4MPer();
+        let viewport = CG.mat4x4Viewport(this.canvas.width, this.canvas.height);
+        let z_min = -view.clip[4] / view.clip[5];
+
+        for (let i = 0; i < this.scene.models.length; i++) {
+            let model = this.scene.models[i];
+            if (!model.vertices || !model.edges) {
+                continue;
+            }
+
+            let transformed = [];
+            for (let j = 0; j < model.vertices.length; j++) {
+                transformed.push(Matrix.multiply([n_per, model.vertices[j]]));
+            }
+
+            for (let j = 0; j < model.edges.length; j++) {
+                let edge = model.edges[j];
+                for (let k = 0; k < edge.length - 1; k++) {
+                    let line = {
+                        pt0: transformed[edge[k]],
+                        pt1: transformed[edge[k + 1]]
+                    };
+
+                    line = this.clipLinePerspective(line, z_min);
+                    if (line === null) {
+                        continue;
+                    }
+
+                    let p0 = Matrix.multiply([viewport, m_per, line.pt0]);
+                    let p1 = Matrix.multiply([viewport, m_per, line.pt1]);
+
+                    let x0 = p0.x / p0.w;
+                    let y0 = p0.y / p0.w;
+                    let x1 = p1.x / p1.w;
+                    let y1 = p1.y / p1.w;
+                    this.drawLine(x0, y0, x1, y1);
+                }
+            }
+        }
     }
 
     // Get outcode for a vertex
@@ -104,84 +158,58 @@ class Renderer {
     // line:         object {pt0: Vector4, pt1: Vector4}
     // z_min:        float (near clipping plane in canonical view volume)
     clipLinePerspective(line, z_min) {
-        let p0 = CG.Vector3(line.pt0.x, line.pt0.y, line.pt0.z); 
-        let p1 = CG.Vector3(line.pt1.x, line.pt1.y, line.pt1.z);
+        let result = null;
+        let p0 = CG.Vector4(line.pt0.x, line.pt0.y, line.pt0.z, 1);
+        let p1 = CG.Vector4(line.pt1.x, line.pt1.y, line.pt1.z, 1);
         let out0 = this.outcodePerspective(p0, z_min);
         let out1 = this.outcodePerspective(p1, z_min);
-        
-        // TODO: implement clipping here!
 
         while (true) {
-            if(out0 === 0 && out1 === 0) {
-                return {pt0: p0, pt1: p1};
+            if ((out0 | out1) === 0) {
+                result = { pt0: p0, pt1: p1 };
+                break;
             }
             if ((out0 & out1) !== 0) {
-                return null;
+                break;
             }
 
-            let outsidePoint;
-            let insidePoint;
-            let isPt0;
-            let outsideCode;
-            if (out0 !== 0) {
-                outsideCode = out0;
-            } else {
-                outsideCode = out1;
-            }
-            if (out0 !== 0) {
-                isPt0 = true;
-                outsidePoint = p0;
-                insidePoint = p1;
-            } else {
-                isPt0 = false;
-                outsidePoint = p1;
-                insidePoint = p0;
-            }
-
+            let out = (out0 !== 0) ? out0 : out1;
+            let dx = p1.x - p0.x;
+            let dy = p1.y - p0.y;
+            let dz = p1.z - p0.z;
             let t;
-            
-            if ((outsideCode & LEFT) !== 0) {
-                t = (outsidePoint.z - outsidePoint.x) / 
-                ((outsidePoint.z - outsidePoint.x) - 
-                (insidePoint.z - insidePoint.x));
+
+            if (out & LEFT) {
+                t = (-p0.x + p0.z) / (dx - dz);
             }
-            else if ((outsideCode & RIGHT) !== 0) {
-                t = (-outsidePoint.z - outsidePoint.x) / 
-                ((-outsidePoint.z - outsidePoint.x) - 
-                (-insidePoint.z - insidePoint.x));
+            else if (out & RIGHT) {
+                t = (p0.x + p0.z) / (-dx - dz);
             }
-            else if ((outsideCode & BOTTOM) !== 0) {
-                t = (outsidePoint.z - outsidePoint.y) /
-                ((outsidePoint.z - outsidePoint.y) - 
-                (insidePoint.z - insidePoint.y));
+            else if (out & BOTTOM) {
+                t = (-p0.y + p0.z) / (dy - dz);
             }
-            else if ((outsideCode & TOP) !== 0) {
-                t = (-outsidePoint.z - outsidePoint.y) /
-                ((-outsidePoint.z - outsidePoint.y) - 
-                (-insidePoint.z - insidePoint.y));
+            else if (out & TOP) {
+                t = (p0.y + p0.z) / (-dy - dz);
             }
-            else if ((outsideCode & FAR) !== 0) {
-                t = (-1 - outsidePoint.z) / 
-                (insidePoint.z - outsidePoint.z);
+            else if (out & FAR) {
+                t = (-p0.z - 1) / dz;
             }
-            else if ((outsideCode & NEAR) !== 0) {
-                t = (z_min - outsidePoint.z) /
-                (insidePoint.z - outsidePoint.z);
+            else {
+                t = (p0.z - z_min) / (-dz);
             }
 
-            let x = outsidePoint.x + t * (insidePoint.x - outsidePoint.x);
-            let y = outsidePoint.y + t * (insidePoint.y - outsidePoint.y);
-            let z = outsidePoint.z + t * (insidePoint.z - outsidePoint.z);
-            let intersection = CG.Vector3(x, y, z);
-
-            if (isPt0) {
-                p0 = intersection;
+            let pt = CG.Vector4(p0.x + t * dx, p0.y + t * dy, p0.z + t * dz, 1);
+            if (out === out0) {
+                p0 = pt;
                 out0 = this.outcodePerspective(p0, z_min);
-            } else {
-                p1 = intersection;
+            }
+            else {
+                p1 = pt;
                 out1 = this.outcodePerspective(p1, z_min);
             }
         }
+
+        return result;
     }
 
     //
@@ -243,6 +271,67 @@ class Renderer {
                                                    1));
                     if (scene.models[i].hasOwnProperty('animation')) {
                         model.animation = JSON.parse(JSON.stringify(scene.models[i].animation));
+                    }
+                }
+            }
+            else if (model.type === 'cylinder') {
+
+                let center = scene.models[i].center;
+                let radius = scene.models[i].radius;
+                let height = scene.models[i].height;
+                let sides = scene.models[i].sides;
+                model.vertices = [];
+                model.edges = [];
+                let bottom = [];
+                let top = [];
+
+                for (let s = 0; s < sides; s++) {
+                    let theta = (2 * Math.PI * s) / sides;
+                    let x = center[0] + radius * Math.cos(theta);
+                    let z = center[2] + radius * Math.sin(theta);
+                    let b = model.vertices.length;
+                    model.vertices.push(CG.Vector4(x, center[1] - height / 2, z, 1));
+                    bottom.push(b);
+                    let t = model.vertices.length;
+                    model.vertices.push(CG.Vector4(x, center[1] + height / 2, z, 1));
+                    top.push(t);
+                }
+
+                for (let s = 0; s < sides; s++) {
+                    model.edges.push([bottom[s], bottom[(s + 1) % sides]]);
+                    model.edges.push([top[s], top[(s + 1) % sides]]);
+                    model.edges.push([bottom[s], top[s]]);
+                }
+            }
+            else if (model.type === 'sphere') {
+                let center = scene.models[i].center;
+                let radius = scene.models[i].radius;
+                let slices = scene.models[i].slices;
+                let stacks = scene.models[i].stacks;
+                model.vertices = [];
+                model.edges = [];
+
+                for (let stack = 0; stack <= stacks; stack++) {
+                    let phi = ((stack / stacks) * Math.PI) - (Math.PI / 2);
+                    for (let slice = 0; slice <= slices; slice++) {
+                        let theta = (slice / slices) * (2 * Math.PI);
+                        let x = center[0] + radius * Math.cos(phi) * Math.cos(theta);
+                        let y = center[1] + radius * Math.sin(phi);
+                        let z = center[2] + radius * Math.cos(phi) * Math.sin(theta);
+                        model.vertices.push(CG.Vector4(x, y, z, 1));
+                    }
+                }
+
+                for (let stack = 0; stack < stacks; stack++) {
+                    for (let slice = 0; slice < slices; slice++) {
+                        let a = stack * (slices + 1) + slice;
+                        let b = a + 1;
+                        let c = a + (slices + 1);
+                        let d = c + 1;
+                        model.edges.push([a, b]);
+                        model.edges.push([a, c]);
+                        model.edges.push([b, d]);
+                        model.edges.push([c, d]);
                     }
                 }
             }
