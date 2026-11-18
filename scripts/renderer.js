@@ -26,6 +26,51 @@ class Renderer {
     //
     updateTransforms(time, delta_time) {
         // TODO: update any transformations needed for animation
+        for (let i = 0; i < this.scene.models.length; i++){
+            let model = this.scene.models[i];
+
+            if (!model.animation){
+                continue;
+            }
+
+            let theta = 2 * Math.PI * model.animation.rps * time / 1000;
+            let rotation = new Matrix(4, 4);
+
+            if (model.animation.axis === 'x'){
+                CG.mat4x4RotateX(rotation, theta);
+            }
+            else if (model.animation.axis === 'y'){
+                CG.mat4x4RotateY(rotation, theta);
+            }
+            else if (model.animation.axis === 'z'){
+                CG.mat4x4RotateZ(rotation, theta);
+            }
+            else{
+                continue;
+            }
+
+            let translate1 = new Matrix(4, 4);
+            CG.mat4x4Translate(
+                translate1,
+                -model.center.x,
+                -model.center.y,
+                -model.center.z
+            );
+
+            let translate2 = new Matrix(4, 4);
+            CG.mat4x4Translate(
+                translate2,
+                model.center.x,
+                model.center.y,
+                model.center.z
+            );
+
+            model.matrix = Matrix.multiply([
+                translate2,
+                rotation,
+                translate1
+            ]);
+        }
     }
 
     //
