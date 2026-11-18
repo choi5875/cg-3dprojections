@@ -2,12 +2,12 @@ import { Matrix, Vector } from "./matrix.js";
 
 // create a 4x4 matrix to the perspective projection / view matrix
 function mat4x4Perspective(prp, srp, vup, clip) {
-    const left = clip[0];
-    const right = clip[1];
-    const bottom = clip[2];
-    const top = clip[3];
-    const near = clip[4];
-    const far = clip[5];
+    const LEFT = clip[0];
+    const RIGHT = clip[1];
+    const BOTTOM = clip[2];
+    const TOP = clip[3];
+    const NEAR = clip[4];
+    const FAR = clip[5];
 
 
     // 1. translate PRP to origin
@@ -31,13 +31,13 @@ function mat4x4Perspective(prp, srp, vup, clip) {
     ];
 
     // 3. shear such that CW is on the z-axis
-    let cw = Vector3((left + right)/2 - prp.x, (bottom + top)/2 - prp.y, -near - prp.z);
+    let cw = Vector3((LEFT + RIGHT)/2 - prp.x, (BOTTOM + TOP)/2 - prp.y, -NEAR - prp.z);
     let shear = new Matrix(4,4);
     mat4x4ShearXY(shear, cw.x/cw.z, cw.y/cw.z);
 
     // 4. scale such that view volume bounds are ([z,-z], [z,-z], [-1,zmin])
     let scale = new Matrix(4,4);
-    mat4x4Scale(scale, (2 * near)/(right - left), (2 * near)/(top - bottom), 1/near);
+    mat4x4Scale(scale, (2 * NEAR)/((RIGHT - LEFT)*FAR), (2 * NEAR)/((TOP - BOTTOM)*FAR), 1/FAR);
     // ...
     let transform = Matrix.multiply([scale, shear, rotate, tslate]);
     return transform;
@@ -96,23 +96,23 @@ function mat4x4Scale(mat4x4, sx, sy, sz) {
 // set values of existing 4x4 matrix to the rotate about x-axis matrix
 function mat4x4RotateX(mat4x4, theta) {
     mat4x4.values = [[1, 0, 0, 0],
-                     [0, cos(theta), -sin(theta), 0], 
-                     [0, sin(theta), cos(theta), 0], 
+                     [0, Math.cos(theta), -Math.sin(theta), 0], 
+                     [0, Math.sin(theta), Math.cos(theta), 0], 
                      [0, 0, 0, 1]];
 }
 
 // set values of existing 4x4 matrix to the rotate about y-axis matrix
 function mat4x4RotateY(mat4x4, theta) {
-    mat4x4.values = [[cos(theta), 0, sin(theta), 0],
+    mat4x4.values = [[Math.cos(theta), 0, Math.sin(theta), 0],
                      [0, 1, 0, 0], 
-                     [-sin(theta), 0, cos(theta), 0], 
+                     [-Math.sin(theta), 0, Math.cos(theta), 0], 
                      [0, 0, 0, 1]];
 }
 
 // set values of existing 4x4 matrix to the rotate about z-axis matrix
 function mat4x4RotateZ(mat4x4, theta) {
-    mat4x4.values = [[cos(theta), -sin(theta), 0, 0],
-                     [sin(theta), cos(theta), 0, 0], 
+    mat4x4.values = [[Math.cos(theta), -Math.sin(theta), 0, 0],
+                     [Math.sin(theta), Math.cos(theta), 0, 0], 
                      [0, 0, 1, 0], 
                      [0, 0, 0, 1]];
 }
