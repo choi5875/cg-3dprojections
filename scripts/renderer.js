@@ -18,7 +18,7 @@ class Renderer {
         this.canvas.height = canvas.height;
         this.ctx = this.canvas.getContext('2d');
         this.scene = this.processScene(scene);
-        this.enable_animation = false;  // <-- disabled for easier debugging; enable for animation
+        this.enable_animation = true;
         this.start_time = null;
         this.prev_time = null;
     }
@@ -75,36 +75,59 @@ class Renderer {
 
     //
     rotateLeft() {
-        let n = this.scene.view.srp.subtract(this.scene.view.prp);
-        let x = n.x;
-        let z = n.z;
-        let theta = -2 * Math.PI / 60;
-        n.x = x * Math.cos(theta) - z * Math.sin(theta);
-        n.z = x * Math.sin(theta) + z * Math.cos(theta);
-        this.scene.view.srp = n.add(this.scene.view.prp);
-        this.draw();
+        this.rotateView(2 * Math.PI / 60);
     }
     
     //
     rotateRight() {
-        let n = this.scene.view.srp.subtract(this.scene.view.prp);
-        let x = n.x;
-        let z = n.z;
-        let theta = 2 * Math.PI / 60;
-        n.x = x * Math.cos(theta) - z * Math.sin(theta);
-        n.z = x * Math.sin(theta) + z * Math.cos(theta);
-        this.scene.view.srp = n.add(this.scene.view.prp);
+        this.rotateView(-2 * Math.PI / 60);
+    }
+
+    rotateView(theta) {
+        let view = this.scene.view;
+        let n = view.prp.subtract(view.srp);
+        n.normalize();
+        let u = view.vup.cross(n);
+        u.normalize();
+        let v = n.cross(u);
+        v.normalize();
+
+        let direction = view.srp.subtract(view.prp);
+        let cosTheta = Math.cos(theta);
+        let sinTheta = Math.sin(theta);
+        let cross = v.cross(direction);
+        let axisScale = v.dot(direction) * (1 - cosTheta);
+        let rotated = new Vector(3);
+        rotated.values = [
+            direction.x * cosTheta + cross.x * sinTheta + v.x * axisScale,
+            direction.y * cosTheta + cross.y * sinTheta + v.y * axisScale,
+            direction.z * cosTheta + cross.z * sinTheta + v.z * axisScale
+        ];
+
+        view.srp = view.prp.add(rotated);
         this.draw();
     }
     
     //
     moveLeft() {
-
+        let n = this.scene.view.prp.subtract(this.scene.view.srp);
+        n.normalize();
+        let u = this.scene.view.vup.cross(n);
+        u.normalize();
+        this.scene.view.prp = this.scene.view.prp.subtract(u);
+        this.scene.view.srp = this.scene.view.srp.subtract(u);
+        this.draw();
     }
     
     //
     moveRight() {
-
+        let n = this.scene.view.prp.subtract(this.scene.view.srp);
+        n.normalize();
+        let u = this.scene.view.vup.cross(n);
+        u.normalize();
+        this.scene.view.prp = this.scene.view.prp.add(u);
+        this.scene.view.srp = this.scene.view.srp.add(u);
+        this.draw();
     }
     
     //
@@ -143,7 +166,7 @@ class Renderer {
 
             let transformed = [];
             for (let j = 0; j < model.vertices.length; j++) {
-                transformed.push(Matrix.multiply([n_per, model.vertices[j]]));
+                transformed.push(Matrix.multiply([n_per, model.matrix, model.vertices[j]]));
             }
 
             for (let j = 0; j < model.edges.length; j++) {
@@ -314,10 +337,84 @@ class Renderer {
                                                    scene.models[i].vertices[j][1],
                                                    scene.models[i].vertices[j][2],
                                                    1));
-                    if (scene.models[i].hasOwnProperty('animation')) {
-                        model.animation = JSON.parse(JSON.stringify(scene.models[i].animation));
-                    }
                 }
+                if (model.vertices.length === 0) {
+                    model.center = CG.Vector4(0, 0, 0, 1);
+                }
+                else {
+                    let minX = model.vertices[0].x;
+                    let maxX = model.vertices[0].x;
+                    let minY = model.vertices[0].y;
+                    let maxY = model.vertices[0].y;
+                    let minZ = model.vertices[0].z;
+                    let maxZ = model.vertices[0].z;
+                    for (let vertex of model.vertices) {
+                        minX = Math.min(minX, vertex.x);
+                        maxX = Math.max(maxX, vertex.x);
+                        minY = Math.min(minY, vertex.y);
+                        maxY = Math.max(maxY, vertex.y);
+                        minZ = Math.min(minZ, vertex.z);
+                        maxZ = Math.max(maxZ, vertex.z);
+                    }
+                    model.center = CG.Vector4(
+                        (minX + maxX) / 2,
+                        (minY + maxY) / 2,
+                        (minZ + maxZ) / 2,
+                        1
+                    );
+                }
+            }
+            else if (model.type === 'cube') {
+                let center = scene.models[i].center;
+                let halfWidth = scene.models[i].width / 2;
+                let halfHeight = scene.models[i].height / 2;
+                let halfDepth = scene.models[i].depth / 2;
+                model.center = CG.Vector4(center[0], center[1], center[2], 1);
+                model.vertices = [
+                    CG.Vector4(center[0] - halfWidth, center[1] - halfHeight, center[2] - halfDepth, 1),
+                    CG.Vector4(center[0] + halfWidth, center[1] - halfHeight, center[2] - halfDepth, 1),
+                    CG.Vector4(center[0] + halfWidth, center[1] + halfHeight, center[2] - halfDepth, 1),
+                    CG.Vector4(center[0] - halfWidth, center[1] + halfHeight, center[2] - halfDepth, 1),
+                    CG.Vector4(center[0] - halfWidth, center[1] - halfHeight, center[2] + halfDepth, 1),
+                    CG.Vector4(center[0] + halfWidth, center[1] - halfHeight, center[2] + halfDepth, 1),
+                    CG.Vector4(center[0] + halfWidth, center[1] + halfHeight, center[2] + halfDepth, 1),
+                    CG.Vector4(center[0] - halfWidth, center[1] + halfHeight, center[2] + halfDepth, 1)
+                ];
+                model.edges = [
+                    [0, 1], [1, 2], [2, 3], [3, 0],
+                    [4, 5], [5, 6], [6, 7], [7, 4],
+                    [0, 4], [1, 5], [2, 6], [3, 7]
+                ];
+            }
+            else if (model.type === 'cone') {
+                let center = scene.models[i].center;
+                let radius = scene.models[i].radius;
+                let height = scene.models[i].height;
+                let sides = scene.models[i].sides;
+                model.vertices = [];
+                model.edges = [];
+                let baseRing = [];
+
+                for (let s = 0; s < sides; s++) {
+                    let theta = (2 * Math.PI * s) / sides;
+                    model.vertices.push(CG.Vector4(
+                        center[0] + radius * Math.cos(theta),
+                        center[1],
+                        center[2] + radius * Math.sin(theta),
+                        1
+                    ));
+                    baseRing.push(s);
+                }
+
+                let apex = model.vertices.length;
+                model.vertices.push(CG.Vector4(center[0], center[1] + height, center[2], 1));
+                baseRing.push(0);
+                model.edges.push(baseRing);
+                for (let s = 0; s < sides; s++) {
+                    model.edges.push([s, apex]);
+                }
+
+                model.center = CG.Vector4(center[0], center[1] + height / 2, center[2], 1);
             }
             else if (model.type === 'cylinder') {
 
@@ -347,6 +444,7 @@ class Renderer {
                     model.edges.push([top[s], top[(s + 1) % sides]]);
                     model.edges.push([bottom[s], top[s]]);
                 }
+                model.center = CG.Vector4(center[0], center[1], center[2], 1);
             }
             else if (model.type === 'sphere') {
                 let center = scene.models[i].center;
@@ -379,6 +477,7 @@ class Renderer {
                         model.edges.push([c, d]);
                     }
                 }
+                model.center = CG.Vector4(center[0], center[1], center[2], 1);
             }
             else {
                 model.center = CG.Vector4(scene.models[i].center[0],
@@ -386,12 +485,16 @@ class Renderer {
                                          scene.models[i].center[2],
                                          1);
                 for (let key in scene.models[i]) {
-                    if (scene.models[i].hasOwnProperty(key) && key !== 'type' && key != 'center') {
+                    if (scene.models[i].hasOwnProperty(key) &&
+                        key !== 'type' && key !== 'center' && key !== 'animation') {
                         model[key] = JSON.parse(JSON.stringify(scene.models[i][key]));
                     }
                 }
             }
 
+            if (scene.models[i].animation) {
+                model.animation = JSON.parse(JSON.stringify(scene.models[i].animation));
+            }
             model.matrix = new Matrix(4, 4);
             processed.models.push(model);
         }

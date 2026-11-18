@@ -81,6 +81,50 @@ let initial_scene = {
                 [3, 8],
                 [4, 9]
             ]
+        },
+        {
+            "type": "cube",
+            "center": [4, 4, -10],
+            "width": 8,
+            "height": 8,
+            "depth": 8,
+            "animation": {
+                "axis": "y",
+                "rps": 0.5
+            }
+        },
+        {
+            "type": "cylinder",
+            "center": [12, 10, -49],
+            "radius": 1.5,
+            "height": 5,
+            "sides": 12,
+            "animation": {
+                "axis": "y",
+                "rps": 0.5
+            }
+        },
+        {
+            "type": "cone",
+            "center": [30, 0, -35],
+            "radius": 4,
+            "height": 8,
+            "sides": 10,
+            "animation": {
+                "axis": "y",
+                "rps": 0.5
+            }
+        },
+        {
+            "type": "sphere",
+            "center": [40, 6, -45],
+            "radius": 10,
+            "slices": 10,
+            "stacks": 10,
+            "animation": {
+                "axis": "x",
+                "rps": 0.5
+            }
         }
     ]
 };
